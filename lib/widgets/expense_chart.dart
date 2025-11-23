@@ -3,20 +3,31 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 import '../models/expense.dart';
 
 class ExpenseChart extends StatelessWidget {
-  final List<Expense> expenses;
+  final List<Transaction> transactions;
 
-  const ExpenseChart({super.key, required this.expenses});
+  const ExpenseChart({super.key, required this.transactions});
 
   @override
   Widget build(BuildContext context) {
+    // Filter only expenses for the chart
+    final expenses = transactions.where((t) => t.type == TransactionType.expense).toList();
+
     if (expenses.isEmpty) {
-      return const Center(child: Text('No expenses to display.'));
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.pie_chart_outline, size: 64, color: Colors.grey[300]),
+            const SizedBox(height: 16),
+            const Text('No expenses to analyze yet.'),
+          ],
+        ),
+      );
     }
 
     final Map<String, double> categoryTotals = {};
-    for (var expense in expenses) {
-      final category = expense.category ?? 'Others';
-      categoryTotals[category] = (categoryTotals[category] ?? 0) + expense.amount;
+    for (var tx in expenses) {
+      categoryTotals[tx.category] = (categoryTotals[tx.category] ?? 0) + tx.amount;
     }
 
     final List<_ChartData> chartData = [];
@@ -28,6 +39,7 @@ class ExpenseChart extends StatelessWidget {
       legend: Legend(
         isVisible: true,
         overflowMode: LegendItemOverflowMode.wrap,
+        position: LegendPosition.bottom,
       ),
       series: <DoughnutSeries<_ChartData, String>>[
         DoughnutSeries<_ChartData, String>(
@@ -38,14 +50,12 @@ class ExpenseChart extends StatelessWidget {
               '${data.category}\n₱${data.amount.toStringAsFixed(0)}',
           dataLabelSettings: const DataLabelSettings(
             isVisible: true,
-            labelPosition: ChartDataLabelPosition.inside,
-            textStyle: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+            labelPosition: ChartDataLabelPosition.outside,
+            textStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
           ),
-          radius: '80%',
-          innerRadius: '40%',  // Only valid for DoughnutSeries
+          radius: '70%',
+          innerRadius: '50%',
+          explode: true,
         ),
       ],
     );

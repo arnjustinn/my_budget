@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../models/expense.dart';
 import '../widgets/summary_card.dart';
 import '../widgets/expense_list.dart';
+import '../widgets/budget_tracker.dart'; // Import the new widget
 import 'add_expense_screen.dart';
 import '../services/storage_service.dart';
+import '../services/notification_service.dart'; // Import Notification Service
 
 import 'analysis_screen.dart';
 import 'account_screen.dart';
@@ -16,41 +18,75 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final List<Expense> _expenses = [];
+  final List<Transaction> _transactions = [];
+  double _monthlyBudget = 0.0;
   final StorageService _storageService = StorageService();
+  final NotificationService _notificationService = NotificationService(); // Instance
 
   int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadExpenses();
+    _loadData();
   }
 
-  Future<void> _loadExpenses() async {
-    final loadedExpenses = await _storageService.loadExpenses();
+  Future<void> _loadData() async {
+    final loadedData = await _storageService.loadTransactions();
+    final savedBudget = await _storageService.loadBudgetLimit();
+    
     setState(() {
-      _expenses.clear();
-      _expenses.addAll(loadedExpenses);
+      _transactions.clear();
+      _transactions.addAll(loadedData);
+      _monthlyBudget = savedBudget;
     });
   }
 
-  Future<void> _saveExpenses() async {
-    await _storageService.saveExpenses(_expenses);
+  Future<void> _saveData() async {
+    await _storageService.saveTransactions(_transactions);
   }
 
-  void _addExpense(Expense expense) {
+  Future<void> _saveBudget(double amount) async {
     setState(() {
-      _expenses.add(expense);
+      _monthlyBudget = amount;
     });
-    _saveExpenses();
+    await _storageService.saveBudgetLimit(amount);
   }
 
-  void _deleteExpense(String id) {
+  void _addTransaction(Transaction transaction) {
     setState(() {
-      _expenses.removeWhere((expense) => expense.id == id);
+      _transactions.add(transaction);
     });
-    _saveExpenses();
+    _saveData();
+    _checkBudgetThresholds(); // Check budget after adding
+  }
+
+  void _checkBudgetThresholds() {
+    if (_monthlyBudget <= 0) return;
+
+    final totalExpenses = _totalExpenses;
+    final ratio = totalExpenses / _monthlyBudget;
+
+    if (ratio >= 1.0) {
+      _notificationService.showNotification(
+        id: 1,
+        title: '⚠️ Budget Limit Exceeded!',
+        body: 'You have spent ₱${totalExpenses.toStringAsFixed(0)}, exceeding your limit of ₱${_monthlyBudget.toStringAsFixed(0)}.',
+      );
+    } else if (ratio >= 0.8) {
+      _notificationService.showNotification(
+        id: 2,
+        title: 'Budget Alert',
+        body: 'You have used ${(ratio * 100).toStringAsFixed(0)}% of your monthly budget.',
+      );
+    }
+  }
+
+  void _deleteTransaction(String id) {
+    setState(() {
+      _transactions.removeWhere((item) => item.id == id);
+    });
+    _saveData();
   }
 
   void _onItemTapped(int index) {
@@ -59,39 +95,75 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // The 3 tab pages
+  void _showSetBudgetDialog() {
+    final TextEditingController controller = TextEditingController(
+      text: _monthlyBudget > 0 ? _monthlyBudget.toStringAsFixed(2) : '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Set Monthly Budget'),
+          content: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              prefixText: '₱ ',
+              hintText: 'Enter amount',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final amount = double.tryParse(controller.text);
+                if (amount != null && amount > 0) {
+                  _saveBudget(amount);
+                  Navigator.pop(ctx);
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  double get _totalExpenses {
+    return _transactions
+        .where((t) => t.type == TransactionType.expense)
+        .fold(0.0, (sum, t) => sum + t.amount);
+  }
+
   List<Widget> get _pages => [
         _buildHomeTab(),
-        AnalysisScreen(expenses: _expenses),
+        AnalysisScreen(transactions: _transactions),
         const AccountScreen(),
       ];
 
   Widget _buildHomeTab() {
-    return Padding(
-      padding: const EdgeInsets.all(12.0),
-      child: Column(
-        children: [
-          SummaryCard(expenses: _expenses),
-          const SizedBox(height: 12),
-          Expanded(
-            child: _expenses.isEmpty
-                ? Center(
-                    child: Text(
-                      'No expenses yet.\nTap + to add one!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  )
-                : ExpenseList(
-                    expenses: _expenses,
-                    onDelete: _deleteExpense,
-                  ),
+    return Column(
+      children: [
+        SummaryCard(transactions: _transactions),
+        BudgetTracker(
+          totalExpenses: _totalExpenses,
+          budgetLimit: _monthlyBudget,
+          onSetBudget: _showSetBudgetDialog,
+        ),
+        Expanded(
+          child: ExpenseList(
+            transactions: _transactions,
+            onDelete: _deleteTransaction,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -106,7 +178,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         centerTitle: true,
         backgroundColor: Colors.teal,
-        elevation: 2,
+        elevation: 0,
       ),
       body: _pages[_selectedIndex],
       floatingActionButton: _selectedIndex == 0
@@ -114,14 +186,14 @@ class _HomeScreenState extends State<HomeScreen> {
               backgroundColor: Colors.teal,
               child: const Icon(Icons.add),
               onPressed: () async {
-                final newExpense = await Navigator.push(
+                final newTransaction = await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => const AddExpenseScreen(),
                   ),
                 );
-                if (newExpense != null && newExpense is Expense) {
-                  _addExpense(newExpense);
+                if (newTransaction != null && newTransaction is Transaction) {
+                  _addTransaction(newTransaction);
                 }
               },
             )
@@ -129,9 +201,11 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
+        selectedItemColor: Colors.teal,
+        unselectedItemColor: Colors.grey,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home),
+            icon: Icon(Icons.dashboard),
             label: 'Home',
           ),
           BottomNavigationBarItem(

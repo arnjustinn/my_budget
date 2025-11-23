@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 
-class Expense {
+enum TransactionType { income, expense }
+
+class Transaction {
   final String id;
   final String title;
   final double amount;
   final DateTime date;
-  final String? category;
+  final String category;
+  final TransactionType type;
 
-  Expense({
-    String? id, // Optional, auto-generated if not provided
+  Transaction({
+    String? id,
     required this.title,
     required this.amount,
     required this.date,
-    this.category,
+    required this.category,
+    required this.type,
   }) : id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
 
-  // Convert Expense object to Map (for saving in local storage/DB)
+  // Convert Transaction object to Map
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -23,33 +27,37 @@ class Expense {
       'amount': amount,
       'date': date.toIso8601String(),
       'category': category,
+      'type': type.toString(), // Store enum as string
     };
   }
 
-  // Create Expense object from Map (for loading from storage/DB)
-  factory Expense.fromMap(Map<String, dynamic> map) {
-    return Expense(
-      id: map['id'], // Uses provided ID from storage
+  // Create Transaction object from Map
+  factory Transaction.fromMap(Map<String, dynamic> map) {
+    return Transaction(
+      id: map['id'],
       title: map['title'],
       amount: map['amount'],
       date: DateTime.parse(map['date']),
-      category: map['category'],
+      category: map['category'] ?? 'Others',
+      type: map['type'] == 'TransactionType.income' 
+          ? TransactionType.income 
+          : TransactionType.expense,
     );
   }
 
-  // For UI category icons (optional)
-  static IconData getCategoryIcon(String? category) {
+  // Helper to get icons based on category
+  static IconData getCategoryIcon(String category) {
     switch (category) {
-      case 'Food':
-        return Icons.restaurant;
-      case 'Transport':
-        return Icons.directions_bus;
-      case 'Bills':
-        return Icons.receipt;
-      case 'Shopping':
-        return Icons.shopping_bag;
-      default:
-        return Icons.attach_money;
+      // Expense Categories
+      case 'Food': return Icons.restaurant;
+      case 'Transport': return Icons.directions_bus;
+      case 'Bills': return Icons.receipt;
+      case 'Shopping': return Icons.shopping_bag;
+      // Income Categories
+      case 'Salary': return Icons.work;
+      case 'Investment': return Icons.trending_up;
+      case 'Gift': return Icons.card_giftcard;
+      default: return Icons.category;
     }
   }
 }

@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
-import '../models/expense.dart';
+import '../models/expense.dart'; // This file contains the Transaction class
 
 class ExpenseProvider with ChangeNotifier {
-  final List<Expense> _expenses = [];
+  final List<Transaction> _expenses = [];
 
-  List<Expense> get expenses => _expenses;
+  List<Transaction> get expenses => _expenses;
 
   double get totalSpending {
-    return _expenses.fold(0.0, (sum, item) => sum + item.amount);
+    // Calculate total only for expense types if you want strictly "spending"
+    return _expenses
+        .where((t) => t.type == TransactionType.expense)
+        .fold(0.0, (sum, item) => sum + item.amount);
   }
 
-  void addExpense(Expense expense) {
-    _expenses.add(expense);
+  void addExpense(Transaction transaction) {
+    _expenses.add(transaction);
     notifyListeners();
   }
 }
